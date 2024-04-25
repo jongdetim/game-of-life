@@ -51,6 +51,7 @@ class Game():
 			self.handle_mouse()
 
 	def render(self):
+		screen.fill(BLACK)
 		self.draw_grid()
 		self.draw_living_cells()
 		pygame.display.flip()
@@ -61,7 +62,6 @@ class Game():
 			pygame.draw.rect(self.screen, WHITE, rect)
  
 	def draw_grid(self):
-		screen.fill(BLACK)
 		for col in range(len(self.grid)):
 			for row in range(len(self.grid[0])):
 				rect = pygame.Rect(row * self.celsize, col * self.celsize, self.celsize, self.celsize)
