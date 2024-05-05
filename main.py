@@ -1,9 +1,9 @@
-
 import os
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
 from collections import defaultdict
-import pygame 
-import requests
+import pygame
+import asyncio
+import aiohttp
 import json
 
 clamp = lambda n, minn, maxn: max(min(maxn, n), minn)
@@ -14,15 +14,12 @@ headers = {'Content-Type': 'application/json'}
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 GREY = (50, 50, 50)
-WINDOW_SIZE = (1920, 1080)
-CEL_SIZE = 20
-UPDATE_SPEED = 5
-FPS = 30
+WINDOW_SIZE = (200, 200)
 CEL_SIZE = 1
-UPDATE_SPEED = 1
-FPS = 1
+UPDATE_SPEED = 5
+FPS = 3
 
-class Game():
+class Game:
 	def __init__(self, window_size=(1920, 1080), celsize=20, update_speed=5, fps=60, borderless=False):
 		self.celsize = celsize
 		self.grid = [[0 for _ in range(0, window_size[0], celsize)] for _ in range(0, window_size[1], celsize)]
@@ -38,14 +35,38 @@ class Game():
 		self.living_cells.add((100, 100))
 		self.living_cells.add((100, 101))
 		self.living_cells.add((100, 102))
+		self.living_cells.add((103, 103))
+		self.living_cells.add((103, 104))
+		self.living_cells.add((101, 105))
+		self.living_cells.add((101, 100))
+		self.living_cells.add((103, 102))
+		self.living_cells.add((104, 102))
+		self.living_cells.add((110, 110))
+		self.living_cells.add((110, 111))
+		self.living_cells.add((110, 112))
+		self.living_cells.add((113, 113))
+		self.living_cells.add((113, 114))
+		self.living_cells.add((111, 112))
+		self.living_cells.add((111, 109))
+		self.living_cells.add((113, 112))
+		self.living_cells.add((114, 112))
+		self.living_cells.add((50, 49))
+		self.living_cells.add((50, 50))
+		self.living_cells.add((49, 48))
+		self.living_cells.add((48, 48))
+		self.living_cells.add((50, 48))
+		self.living_cells.add((48, 52))
+		self.living_cells.add((52, 51))
+		self.living_cells.add((50, 52))
+		self.living_cells.add((48, 47))
 
-	def	handle_keypress(self, event):
+	def handle_keypress(self, event):
 		if event.key == pygame.K_ESCAPE:
 			self.running = False
 		elif event.key == pygame.K_SPACE:
 			self.pause = not self.pause
 
-	def	handle_mouse(self):
+	def handle_mouse(self):
 		if pygame.mouse.get_pressed()[0]:
 			pos = pygame.mouse.get_pos()
 			self.living_cells.add((pos[1] // self.celsize, pos[0] // self.celsize))
@@ -53,14 +74,14 @@ class Game():
 			pos = pygame.mouse.get_pos()
 			self.living_cells.discard((pos[1] // self.celsize, pos[0] // self.celsize))
 
-	def	handle_events(self):
+	async def handle_events(self):
 		for event in pygame.event.get():
-			if event.type == pygame.QUIT: 
+			if event.type == pygame.QUIT:
 				self.running = False
 			if event.type == pygame.KEYDOWN:
 				self.handle_keypress(event)
-				
-			self.handle_mouse()
+		
+		self.handle_mouse()
 
 	def render(self):
 		self.draw_grid()
@@ -79,18 +100,6 @@ class Game():
 				pygame.draw.rect(self.screen, GREY, rect, 1)
 
 	def next_generation(self, borderless=False):
-		'''
-			- Initialize an empty set to store the coordinates of living cells.
-			- For each living cell:
-			- Add the cell's coordinates to the set.
-			- For each of the cell's eight neighbors, increment a counter in a dictionary keyed by the neighbor's coordinates.
-			- Initialize an empty set to store the coordinates of cells that will be alive in the next generation.
-			- For each cell in the dictionary:
-			- If the cell has exactly three neighbors, add it to the next generation set (birth rule).
-			- If the cell is in the current generation set and has two or three neighbors, add it to the next generation set (survival rule).
-			- Set the current generation set to the next generation set.
-			- This approach reduces the number of cells you need to check, potentially improving performance for sparse grids. However, it may not be faster for dense grids where a large proportion of cells are alive.
-		'''
 		neighbor_counts = defaultdict(int)
 		for cell in self.living_cells:
 			for dx in [-1, 0, 1]:
@@ -106,19 +115,12 @@ class Game():
 
 		self.last_gen = self.living_cells
 		self.living_cells = next_gen
-		print(self.living_cells)
-		print(self.last_gen)
 
 	def take_step(self, update_speed=5):
-		if pygame.time.get_ticks() - self.last_generation_time >= (1000 / update_speed):
-			self.next_generation(self.borderless)
-			self.last_generation_time = pygame.time.get_ticks()
-		# if pygame.time.get_ticks() - self.last_generation_time >= (1000 / update_speed):
 		self.clock.tick(self.fps) 
 		self.next_generation(self.borderless)
-		self.last_generation_time = pygame.time.get_ticks()
 
-	def	run(self, print_controls=True):
+	async def run(self, print_controls=True):
 		if print_controls:
 			print("Controls:")
 			print("  - Left click to add a cell")
@@ -127,36 +129,75 @@ class Game():
 			print("  - Escape to quit")
 			print("  - Click the close button to quit")
 
-		while self.running:
-			self.take_step(self.update_speed)
-			render_pixelcorp(self.living_cells, self.last_gen)
+		async with aiohttp.ClientSession() as session:
+			# await paint_canvas_black_semaphore(session)
+			while self.running:
+				self.take_step(self.update_speed)
+				await render_pixelcorp(session, self.living_cells, self.last_gen)
 
-			# self.handle_events()
-			# if not self.pause:
-			# 	self.take_step(self.update_speed)
-			# self.clock.tick(self.fps)
-			# self.render()
+async def paint_canvas_black(session):
+	async def send_pixel(pixel):
+		async with session.post(url, headers=headers, data=json.dumps(pixel)) as response:
+			pass  # No need to wait for response
+
+	tasks = []
+	for x in range(0, WINDOW_SIZE[0], CEL_SIZE):
+		for y in range(0, WINDOW_SIZE[1], CEL_SIZE):
+			pixel = {'x': x, 'y': y, 'color': BLACK, 'key': 'OYUDJBMY'}
+			task = send_pixel(pixel)
+			tasks.append(task)
+
+	print("painting canvas black")
+	await asyncio.gather(*tasks)
+	print("finished painting canvas black")
+
+async def paint_canvas_black_semaphore(session):
+    async def send_pixel(pixel):
+        async with sem:
+            async with session.post(url, headers=headers, json=pixel) as _:
+                pass  # No need to wait for response
+
+    sem = asyncio.Semaphore(10000)  # Adjust the semaphore limit as needed
+    tasks = []
+    for x in range(0, WINDOW_SIZE[0], CEL_SIZE):
+        for y in range(0, WINDOW_SIZE[1], CEL_SIZE):
+            pixel = {'x': x, 'y': y, 'color': BLACK, 'key': 'OYUDJBMY'}
+            tasks.append(send_pixel(pixel))
+
+    print("painting canvas black")
+    await asyncio.gather(*tasks)
+    print("finished painting canvas black")
+
+
+async def render_pixelcorp(session, living_cells, last_gen):
+	async def send_pixel(pixel):
+		async with session.post(url, headers=headers, data=json.dumps(pixel)) as response:
+			# if response.status != 200:
+			# 	print(f"Failed to send pixel: {response.status}")
+			# else:
+			# 	print(f"Sent {pixel['color']} pixel at ({pixel['x']}, {pixel['y']})")
+			pass
+
+	tasks = []
+	for pos in last_gen:
+		if pos not in living_cells:
+			x, y = pos
+			pixel = {'x': x, 'y': y, 'color': BLACK, 'key': 'OYUDJBMY'}
+			task = send_pixel(pixel)
+			tasks.append(task)
+	await asyncio.gather(*tasks)
+
+	tasks = []
+	for pos in living_cells:
+		if pos not in last_gen:
+			x, y = pos
+			pixel = {'x': x, 'y': y, 'color': WHITE, 'key': 'OYUDJBMY'}
+			task = send_pixel(pixel)
+			tasks.append(task)
+	await asyncio.gather(*tasks)
 
 pygame.init()
-# screen = pygame.display.set_mode(WINDOW_SIZE) 
-# pygame.display.set_caption("Tim's Game of Life") 
-
-game = Game(WINDOW_SIZE, CEL_SIZE, UPDATE_SPEED, FPS, borderless=False)
-
-def render_pixelcorp(living_cells, last_gen):
-	for pos in last_gen:
-		x, y = pos
-		pixel = {'x': x, 'y': y, 'color': BLACK, 'key': 'OYUDJBMY' }
-		response = requests.post(url, headers=headers, data=json.dumps(pixel))
-
-	for pos in living_cells:
-		x, y = pos
-		pixel = {'x': x, 'y': y, 'color': WHITE, 'key': 'OYUDJBMY' }
-		response = requests.post(url, headers=headers, data=json.dumps(pixel))
-
-# pygame.init()
-# screen = pygame.display.set_mode(WINDOW_SIZE) 
-# pygame.display.set_caption("Tim's Game of Life") 
 
 game = Game((200, 200), CEL_SIZE, UPDATE_SPEED, FPS, borderless=False)
-game.run(print_controls=True)
+loop = asyncio.get_event_loop()
+loop.run_until_complete(game.run(print_controls=True))
