@@ -1,4 +1,7 @@
+
+import os
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
+from collections import defaultdict
 import pygame 
 import requests
 import json
@@ -20,8 +23,7 @@ UPDATE_SPEED = 1
 FPS = 1
 
 class Game():
-	def __init__(self, screen, window_size=(1920, 1080), celsize=20, update_speed=5, fps=60, borderless=False):
-		self.screen = screen
+	def __init__(self, window_size=(1920, 1080), celsize=20, update_speed=5, fps=60, borderless=False):
 		self.celsize = celsize
 		self.grid = [[0 for _ in range(0, window_size[0], celsize)] for _ in range(0, window_size[1], celsize)]
 		self.living_cells = set()
@@ -39,7 +41,66 @@ class Game():
 
 	def	handle_keypress(self, event):
 		if event.key == pygame.K_ESCAPE:
-@@ -94,12 +105,16 @@ def next_generation(self, borderless=False):
+			self.running = False
+		elif event.key == pygame.K_SPACE:
+			self.pause = not self.pause
+
+	def	handle_mouse(self):
+		if pygame.mouse.get_pressed()[0]:
+			pos = pygame.mouse.get_pos()
+			self.living_cells.add((pos[1] // self.celsize, pos[0] // self.celsize))
+		elif pygame.mouse.get_pressed()[2]:
+			pos = pygame.mouse.get_pos()
+			self.living_cells.discard((pos[1] // self.celsize, pos[0] // self.celsize))
+
+	def	handle_events(self):
+		for event in pygame.event.get():
+			if event.type == pygame.QUIT: 
+				self.running = False
+			if event.type == pygame.KEYDOWN:
+				self.handle_keypress(event)
+				
+			self.handle_mouse()
+
+	def render(self):
+		self.draw_grid()
+		self.draw_living_cells()
+		pygame.display.flip()
+	
+	def draw_living_cells(self):
+		for cell in self.living_cells:
+			rect = pygame.Rect(cell[1] * self.celsize, cell[0] * self.celsize, self.celsize, self.celsize)
+			pygame.draw.rect(self.screen, WHITE, rect)
+ 
+	def draw_grid(self):
+		for col in range(len(self.grid)):
+			for row in range(len(self.grid[0])):
+				rect = pygame.Rect(row * self.celsize, col * self.celsize, self.celsize, self.celsize)
+				pygame.draw.rect(self.screen, GREY, rect, 1)
+
+	def next_generation(self, borderless=False):
+		'''
+			- Initialize an empty set to store the coordinates of living cells.
+			- For each living cell:
+			- Add the cell's coordinates to the set.
+			- For each of the cell's eight neighbors, increment a counter in a dictionary keyed by the neighbor's coordinates.
+			- Initialize an empty set to store the coordinates of cells that will be alive in the next generation.
+			- For each cell in the dictionary:
+			- If the cell has exactly three neighbors, add it to the next generation set (birth rule).
+			- If the cell is in the current generation set and has two or three neighbors, add it to the next generation set (survival rule).
+			- Set the current generation set to the next generation set.
+			- This approach reduces the number of cells you need to check, potentially improving performance for sparse grids. However, it may not be faster for dense grids where a large proportion of cells are alive.
+		'''
+		neighbor_counts = defaultdict(int)
+		for cell in self.living_cells:
+			for dx in [-1, 0, 1]:
+				for dy in [-1, 0, 1]:
+					if dx != 0 or dy != 0:
+						if borderless or (cell[0] + dx >= 0 and cell[0] + dx < len(self.grid) and cell[1] + dy >= 0 and cell[1] + dy < len(self.grid[0])):
+							neighbor = (cell[0] + dx, cell[1] + dy)
+							neighbor_counts[neighbor] += 1
+		next_gen = set()
+		for cell, count in neighbor_counts.items():
 			if count == 3 or (count == 2 and cell in self.living_cells):
 				next_gen.add(cell)
 
@@ -59,27 +120,28 @@ class Game():
 
 	def	run(self, print_controls=True):
 		if print_controls:
-@@ -111,15 +126,27 @@ def	run(self, print_controls=True):
+			print("Controls:")
+			print("  - Left click to add a cell")
+			print("  - Right click to remove a cell")
+			print("  - Space to pause")
+			print("  - Escape to quit")
 			print("  - Click the close button to quit")
 
 		while self.running:
-			self.handle_events()
-			if not self.pause:
-				self.take_step(self.update_speed)
-			self.clock.tick(self.fps)
-			self.render()
+			self.take_step(self.update_speed)
+			render_pixelcorp(self.living_cells, self.last_gen)
 
-pygame.init()
-screen = pygame.display.set_mode(WINDOW_SIZE) 
-pygame.display.set_caption("Tim's Game of Life") 
-
-game = Game(screen, WINDOW_SIZE, CEL_SIZE, UPDATE_SPEED, FPS, borderless=False)
 			# self.handle_events()
 			# if not self.pause:
-			self.take_step(self.update_speed)
+			# 	self.take_step(self.update_speed)
 			# self.clock.tick(self.fps)
 			# self.render()
-			render_pixelcorp(self.living_cells, self.last_gen)
+
+pygame.init()
+# screen = pygame.display.set_mode(WINDOW_SIZE) 
+# pygame.display.set_caption("Tim's Game of Life") 
+
+game = Game(WINDOW_SIZE, CEL_SIZE, UPDATE_SPEED, FPS, borderless=False)
 
 def render_pixelcorp(living_cells, last_gen):
 	for pos in last_gen:
@@ -96,5 +158,5 @@ def render_pixelcorp(living_cells, last_gen):
 # screen = pygame.display.set_mode(WINDOW_SIZE) 
 # pygame.display.set_caption("Tim's Game of Life") 
 
-game = Game("haha lol", (200,200), CEL_SIZE, UPDATE_SPEED, FPS, borderless=False)
+game = Game((200, 200), CEL_SIZE, UPDATE_SPEED, FPS, borderless=False)
 game.run(print_controls=True)
